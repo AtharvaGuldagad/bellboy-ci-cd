@@ -1,0 +1,12 @@
+# --- Java/Maven rules (from steward/.gitignore) ---
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+.mtj.tmp/
+*.jar
+*.war
+*.ear
+*.hsperfdata_*
+
+
+.vscode/
