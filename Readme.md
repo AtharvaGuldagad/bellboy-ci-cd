@@ -106,28 +106,27 @@ Projects processed by BellBoy define their pipeline execution lifecycle via a cu
 
 * Clone the repository:
 
-* git clone [https://github.com/](https://github.com/)AtharvaGuldagad/bellboy.git
-cd bellboy
-
+    ``` git clone https://github.com/AtharvaGuldagad/bellboy.git cd bellboy ```
 
 * Build and run the Steward Orchestrator:
 
-* cd steward
-* mvn clean install
-* mvn spring-boot:run
-
+``` 
+cd steward
+mvn clean install
+mvn spring-boot:run
+```
 
 ## Simulating a Pipeline Trigger (MVP Mode)
 
 During the MVP development phase, you can simulate a Git push webhook event by firing a POST request directly to the Steward webhook receiver endpoint:
-
+```
     curl -X POST http://localhost:8080/api/v1/webhook \
         -H "Content-Type: application/json" \
          -d '{
         "repo_url": "[https://github.com/](https://github.com/)[sample-target-repo].git",
         "commit_sha": "[sample-git-commit-hash]"
     }'
-
+```
 
 ## Roadmap & Milestone Targets
 
