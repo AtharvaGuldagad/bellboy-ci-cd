@@ -106,7 +106,7 @@ Projects processed by BellBoy define their pipeline execution lifecycle via a cu
 
 * Clone the repository:
 
-* git clone [https://github.com/](https://github.com/)Atharva-Guldagad/bellboy.git
+* git clone [https://github.com/](https://github.com/)AtharvaGuldagad/bellboy.git
 cd bellboy
 
 
