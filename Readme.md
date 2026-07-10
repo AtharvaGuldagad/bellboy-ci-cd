@@ -106,7 +106,9 @@ Projects processed by BellBoy define their pipeline execution lifecycle via a cu
 
 * Clone the repository:
 
-    ``` git clone https://github.com/AtharvaGuldagad/bellboy.git cd bellboy ```
+    ``` 
+    git clone https://github.com/AtharvaGuldagad/bellboy.git cd bellboy 
+    ```
 
 * Build and run the Steward Orchestrator:
 
