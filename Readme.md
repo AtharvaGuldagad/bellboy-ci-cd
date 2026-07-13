@@ -106,16 +106,16 @@ Projects processed by BellBoy define their pipeline execution lifecycle via a cu
 
 * Clone the repository:
 
-    ``` 
+``` 
     git clone https://github.com/AtharvaGuldagad/bellboy.git cd bellboy 
-    ```
+```
 
 * Build and run the Steward Orchestrator:
 
 ``` 
-cd steward
-mvn clean install
-mvn spring-boot:run
+ cd steward
+ mvn clean install
+ mvn spring-boot:run
 ```
 
 ## Simulating a Pipeline Trigger (MVP Mode)

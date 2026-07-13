@@ -33,6 +33,9 @@ public class PipelineRun {
     @Column(name = "end_time")
     private LocalDateTime endTime;
 
+    @Column(name = "branch", nullable = false)
+    private String branch;
+
     @PrePersist //hooks in JPA to set default val before persisting to DB
     protected void onCreate() {
         if (this.status == null) {
