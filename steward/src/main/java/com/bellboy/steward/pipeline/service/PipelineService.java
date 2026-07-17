@@ -22,12 +22,15 @@ public class PipelineService {
      */
     @Transactional
     public UUID registerNewRun(WebhookPayload payload) {
+
+        //branch not specified? default: main branch :P
+        String targetBranch = payload.getBranch()!=null ? payload.getBranch() :"main";
         
         PipelineRun newRun = PipelineRun.builder()
                 .repoURL(payload.getRepoUrl())
-                .branch(payload.getBranch())
+                .branch(targetBranch)
                 .commitSHA(payload.getCommitSha())
-                // status and datetime already populated in the entity constructor
+                // status and datetime already filled up in the entity constructor
                 .build();
 
         PipelineRun savedRun = pipelineRunRepository.save(newRun);

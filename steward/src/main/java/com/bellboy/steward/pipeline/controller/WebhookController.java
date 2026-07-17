@@ -12,13 +12,13 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/webhook")
+@RequestMapping("/api/v1/webhook")
 @RequiredArgsConstructor
 public class WebhookController {
 
     private final PipelineService pipelineService;
 
-    @PostMapping("/check-in")
+    @PostMapping
     public ResponseEntity<Map<String, Object>> handleWebhook(@RequestBody WebhookPayload payload) {
         
         UUID runId = pipelineService.registerNewRun(payload);
