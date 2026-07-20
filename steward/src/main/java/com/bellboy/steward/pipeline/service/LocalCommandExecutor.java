@@ -25,22 +25,20 @@ public class LocalCommandExecutor implements PipelineExecutor {
     @Override
     public void execute(PipelineRun run) {
         try {
-            // STEP 2.2a: Update status to RUNNING
             updateStatus(run, PipelineStatus.RUNNING);
             log.info("Starting execution for Run ID: {}", run.getId());
 
-            // STEP 2.1: Workspace Manager (Create Temp Directory)
+            // Create Temp Dir
             Path workspace = Files.createTempDirectory("bellboy-run-" + run.getId());
             log.info("Created workspace at: {}", workspace.toAbsolutePath());
 
-            // STEP 2.2b: The LuggageLoaded Action (Git Clone)
+            //Git Clone
             String cloneCommand = String.format("git clone %s .", run.getRepoURL());
             log.info("Executing: {}", cloneCommand);
 
             ProcessBuilder pb = new ProcessBuilder("bash", "-c", cloneCommand);
             pb.directory(workspace.toFile());
-            pb.redirectErrorStream(true); // Merges stderr into stdout
-
+            pb.redirectErrorStream(true); 
             Process process = pb.start();
 
             // Stream the terminal output to our Spring Boot console
@@ -62,7 +60,7 @@ public class LocalCommandExecutor implements PipelineExecutor {
             }
 
         } catch (Exception e) {
-            // STEP 2.3: Error Handling (DoNotDisturb)
+            // Err Handling (DnD)
             log.error("Pipeline execution critically failed for Run ID: {}", run.getId(), e);
             updateStatus(run, PipelineStatus.FAILED);
         }
