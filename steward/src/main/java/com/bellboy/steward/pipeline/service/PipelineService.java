@@ -4,38 +4,33 @@ import com.bellboy.steward.pipeline.PipelineRun;
 import com.bellboy.steward.pipeline.PipelineRunRepository;
 import com.bellboy.steward.pipeline.dto.WebhookPayload;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PipelineService {
 
     private final PipelineRunRepository pipelineRunRepository;
+    private final PipelineExecutor executor; 
 
-    /**
-     * Registers a new pipeline run from an incoming webhook payload.
-     * * @param payload The parsed JSON from the Git provider.
-     * @return The UUID ofnewly created pipeline run.
-     */
     @Transactional
     public UUID registerNewRun(WebhookPayload payload) {
-
-        //branch not specified? default: main branch :P
-        String targetBranch = payload.getBranch()!=null ? payload.getBranch() :"main";
-        
+        String targetBranch = payload.getBranch() != null ? payload.getBranch() : "main";
         PipelineRun newRun = PipelineRun.builder()
                 .repoURL(payload.getRepoUrl())
                 .branch(targetBranch)
                 .commitSHA(payload.getCommitSha())
-                // status and datetime already filled up in the entity constructor
                 .build();
-
         PipelineRun savedRun = pipelineRunRepository.save(newRun);
-        
-        // TODO: define trigger to start the pipeline run asynchronously (using kafka later on) and
+        log.info("Registered new run with ID: {}", savedRun.getId());
+
+        executor.execute(savedRun);
 
         return savedRun.getId();
     }
