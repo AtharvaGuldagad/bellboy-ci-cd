@@ -4,7 +4,7 @@ import com.bellboy.steward.pipeline.PipelineRun;
 
 public interface PipelineExecutor {
     /**
-     * Execs pipeline run asynchronously.
+     * Execs pipeline run asyncly
      * @param run The pipeline run entity containing repo and commit details.
      */
     void execute(PipelineRun run);
