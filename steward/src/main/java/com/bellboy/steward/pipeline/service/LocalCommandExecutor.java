@@ -19,58 +19,69 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class LocalCommandExecutor implements PipelineExecutor {
 
-    private final PipelineRunRepository repository;
+    private final PipelineRunRepository pipelineRunRepository;
 
     @Async
     @Override
     public void execute(PipelineRun run) {
+        log.info("Started execution for Pipeline Run: {}", run.getId());
+
+        // Update status to RUNNING
+        pipelineRunRepository.findById(run.getId()).ifPresent(freshRun -> {
+            freshRun.setStatus(PipelineStatus.RUNNING);
+            pipelineRunRepository.save(freshRun);
+        });
+
         try {
-            updateStatus(run, PipelineStatus.RUNNING);
-            log.info("Starting execution for Run ID: {}", run.getId());
+            // Create a isolated workspace for this pipeline run
+            Path workspace = Files.createTempDirectory("bellboy-workspace-" + run.getId());
+            log.info("Provisioned local workspace at: {}", workspace.toAbsolutePath());
 
-            // Create Temp Dir
-            Path workspace = Files.createTempDirectory("bellboy-run-" + run.getId());
-            log.info("Created workspace at: {}", workspace.toAbsolutePath());
+            // Config the OS process to run Git clone
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                    "git", "clone", run.getRepoURL(), "."
+            );
+            
+            // Set the working dir to the temp folder
+            processBuilder.directory(workspace.toFile());
+            
+            // Merge Std Error and Std Out to get a single log stream
+            processBuilder.redirectErrorStream(true);
 
-            //Git Clone
-            String cloneCommand = String.format("git clone %s .", run.getRepoURL());
-            log.info("Executing: {}", cloneCommand);
+            // Start the OS process
+            Process process = processBuilder.start();
 
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", cloneCommand);
-            pb.directory(workspace.toFile());
-            pb.redirectErrorStream(true); 
-            Process process = pb.start();
-
-            // Stream the terminal output to our Spring Boot console
+            // Stream logs from the terminal
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    log.info("[Run {}] {}", run.getId(), line);
+                    // MVP: Just print to console. Future: Stream to Kafka
+                    log.info("[RUN-{}] {}", run.getId().toString().substring(0,8), line);
                 }
             }
 
+            // Wait for the process to finish and get the OS exit code
             int exitCode = process.waitFor();
+            log.info("Process finished with Exit Code: {}", exitCode);
+
+            // Update status based on Linux standard (0 = Success, anything else = Failure)
+            PipelineStatus finalStatus = (exitCode == 0) ? PipelineStatus.SUCCESS : PipelineStatus.FAILED;
             
-            if (exitCode == 0) {
-                log.info("Git clone successful for Run ID: {}", run.getId());
-                updateStatus(run, PipelineStatus.SUCCESS);
-            } else {
-                log.error("Git clone failed with exit code {} for Run ID: {}", exitCode, run.getId());
-                updateStatus(run, PipelineStatus.FAILED);
-            }
+            pipelineRunRepository.findById(run.getId()).ifPresent(freshRun -> {
+                freshRun.setStatus(finalStatus);
+                freshRun.setEndTime(LocalDateTime.now());
+                pipelineRunRepository.save(freshRun);
+                log.info("Pipeline Run {} concluded with status: {}", freshRun.getId(), freshRun.getStatus());
+            });
 
         } catch (Exception e) {
-            // Err Handling (DnD)
-            log.error("Pipeline execution critically failed for Run ID: {}", run.getId(), e);
-            updateStatus(run, PipelineStatus.FAILED);
+            log.error("Catastrophic system failure during pipeline execution.", e);
+            
+            pipelineRunRepository.findById(run.getId()).ifPresent(freshRun -> {
+                freshRun.setStatus(PipelineStatus.FAILED);
+                freshRun.setEndTime(LocalDateTime.now());
+                pipelineRunRepository.save(freshRun);
+            });
         }
-    }
-
-    private void updateStatus(PipelineRun run, PipelineStatus status) {
-        run.setStatus(status);
-        if (status == PipelineStatus.SUCCESS || status == PipelineStatus.FAILED) {
-            run.setEndTime(LocalDateTime.now());
-        }
-        repository.save(run);
     }
 }
