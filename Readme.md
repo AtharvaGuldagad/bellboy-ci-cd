@@ -136,9 +136,9 @@ During the MVP development phase, you can simulate a Git push webhook event by f
 
 [x] Design Core Pipeline state machine and H2 database models.
 
-[ ] Implement local HTTP webhook ingestion endpoint.
+[x] Implement local HTTP webhook ingestion endpoint.
 
-[ ] Build monolithic Java execution runner using local operating system subprocesses.
+[x] Build monolithic Java execution runner using local operating system subprocesses.
 
 ### Milestone 2: Monorepo Decoupling
 
