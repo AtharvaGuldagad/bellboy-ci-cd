@@ -142,7 +142,7 @@ During the MVP development phase, you can simulate a Git push webhook event by f
 
 ### Milestone 2: Monorepo Decoupling
 
-[ ] Implement Go Lang runner (bellhop) to parse custom YAML configurations.
+[x] Implement Go Lang runner (bellhop) to parse custom YAML configurations.
 
 [ ] Create HTTP state-synchronization endpoints between Steward and Bellhop.
 
