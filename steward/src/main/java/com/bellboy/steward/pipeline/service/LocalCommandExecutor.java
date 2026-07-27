@@ -3,10 +3,13 @@ package com.bellboy.steward.pipeline.service;
 import com.bellboy.steward.pipeline.PipelineRun;
 import com.bellboy.steward.pipeline.PipelineRunRepository;
 import com.bellboy.steward.pipeline.PipelineStatus;
+import com.bellboy.steward.pipeline.dto.config.BellboyConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -19,69 +22,66 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class LocalCommandExecutor implements PipelineExecutor {
 
-    private final PipelineRunRepository pipelineRunRepository;
+    private final PipelineRunRepository repository;
+    private final PipelineConfigParser configParser;
 
     @Async
     @Override
     public void execute(PipelineRun run) {
-        log.info("Started execution for Pipeline Run: {}", run.getId());
-
-        // Update status to RUNNING
-        pipelineRunRepository.findById(run.getId()).ifPresent(freshRun -> {
-            freshRun.setStatus(PipelineStatus.RUNNING);
-            pipelineRunRepository.save(freshRun);
-        });
-
         try {
-            // Create a isolated workspace for this pipeline run
-            Path workspace = Files.createTempDirectory("bellboy-workspace-" + run.getId());
-            log.info("Provisioned local workspace at: {}", workspace.toAbsolutePath());
+            updateStatus(run.getId(), PipelineStatus.RUNNING);
+            log.info("Starting execution for Run ID: {}", run.getId());
 
-            // Config the OS process to run Git clone
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    "git", "clone", run.getRepoURL(), "."
-            );
+            Path workspace = Files.createTempDirectory("bellboy-run-" + run.getId());
+            log.info("Created workspace at: {}", workspace.toAbsolutePath());
+
+            String cloneCommand = String.format("git clone %s .", run.getRepoURL());
+            log.info("Executing: {}", cloneCommand);
+
+            ProcessBuilder pb = new ProcessBuilder("bash", "-c", cloneCommand);
+            pb.directory(workspace.toFile());
+            pb.redirectErrorStream(true); 
+
+            Process process = pb.start();
             
-            // Set the working dir to the temp folder
-            processBuilder.directory(workspace.toFile());
-            
-            // Merge Std Error and Std Out to get a single log stream
-            processBuilder.redirectErrorStream(true);
-
-            // Start the OS process
-            Process process = processBuilder.start();
-
-            // Stream logs from the terminal
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    // MVP: Just print to console. Future: Stream to Kafka
-                    log.info("[RUN-{}] {}", run.getId().toString().substring(0,8), line);
+                    log.info("[Run {}] {}", run.getId().toString().substring(0,8), line);
                 }
             }
-
-            // Wait for the process to finish and get the OS exit code
-            int exitCode = process.waitFor();
-            log.info("Process finished with Exit Code: {}", exitCode);
-
-            // Update status based on Linux standard (0 = Success, anything else = Failure)
-            PipelineStatus finalStatus = (exitCode == 0) ? PipelineStatus.SUCCESS : PipelineStatus.FAILED;
-            
-            pipelineRunRepository.findById(run.getId()).ifPresent(freshRun -> {
-                freshRun.setStatus(finalStatus);
-                freshRun.setEndTime(LocalDateTime.now());
-                pipelineRunRepository.save(freshRun);
-                log.info("Pipeline Run {} concluded with status: {}", freshRun.getId(), freshRun.getStatus());
-            });
+            int exitCode = process.waitFor();          
+            if (exitCode == 0) {
+                log.info("Git clone successful for Run ID: {}", run.getId());
+                try {
+                    BellboyConfig config = configParser.parseConfiguration(workspace);
+                    log.info("Successfully parsed .bellboy.yml. Pipeline Name: {}", config.getPipeline().getName());
+                    updateStatus(run.getId(), PipelineStatus.SUCCESS); 
+                    
+                } catch (Exception e) {
+                    log.error("Failed to extract configuration: {}", e.getMessage());
+                    updateStatus(run.getId(), PipelineStatus.FAILED);
+                }
+                
+            } else {
+                log.error("Git clone failed with exit code {} for Run ID: {}", exitCode, run.getId());
+                updateStatus(run.getId(), PipelineStatus.FAILED);
+            }
 
         } catch (Exception e) {
-            log.error("Catastrophic system failure during pipeline execution.", e);
-            
-            pipelineRunRepository.findById(run.getId()).ifPresent(freshRun -> {
-                freshRun.setStatus(PipelineStatus.FAILED);
-                freshRun.setEndTime(LocalDateTime.now());
-                pipelineRunRepository.save(freshRun);
-            });
+            log.error("Pipeline execution critically failed for Run ID: {}", run.getId(), e);
+            updateStatus(run.getId(), PipelineStatus.FAILED);
         }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateStatus(java.util.UUID runId, PipelineStatus status) {
+        repository.findById(runId).ifPresent(freshRun -> {
+            freshRun.setStatus(status);
+            if (status == PipelineStatus.SUCCESS || status == PipelineStatus.FAILED) {
+                freshRun.setEndTime(LocalDateTime.now());
+            }
+            repository.save(freshRun);
+        });
     }
 }
