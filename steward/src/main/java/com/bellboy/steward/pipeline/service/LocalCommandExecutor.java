@@ -73,7 +73,7 @@ public class LocalCommandExecutor implements PipelineExecutor {
             updateStatus(run.getId(), PipelineStatus.FAILED);
         }
     }
-
+ // gg
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateStatus(java.util.UUID runId, PipelineStatus status) {
         repository.findById(runId).ifPresent(freshRun -> {
