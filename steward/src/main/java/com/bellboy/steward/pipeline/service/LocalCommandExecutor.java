@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -83,12 +84,25 @@ public class LocalCommandExecutor implements PipelineExecutor {
                                     if (currentStage.equals(taskDetails.getStage())) {
                                         log.info("-> Preparing Task: {}", taskName);
 
-                                        // Exec the command
-                }
-            }
-        }
-    }
-} 
+                                        // make sure commands are defined for the task otherwise we skip ofc
+                                        if (taskDetails.getCommands() != null) {
+                                            for (String cmd : taskDetails.getCommands()) {
+
+                                                // Send it (to the OS) store the res
+                                                boolean isSuccess = executeShellCommand(cmd, workspace, run.getId());
+
+                                                if (!isSuccess) {
+                                                    // If a command fails, the whole pipeline must halt.
+                                                    throw new RuntimeException(
+                                                            "Pipeline halted due to failed command: " + cmd);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     
                 } catch (Exception e) {
                     log.error("Failed to extract configuration: {}", e.getMessage());
@@ -116,4 +130,26 @@ public class LocalCommandExecutor implements PipelineExecutor {
             repository.save(freshRun);
         });
     }
+    private boolean executeShellCommand(String command, Path workspace, UUID runId) {
+    log.info("[Run {}] Executing native command: {}", runId, command);
+    
+    try {
+        // THE WRAPPERRRR, abstracting the OS command exec
+        ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
+        // working dir ofc the cloned repo, not the temp dir
+        pb.directory(workspace.toFile());
+        
+        // LEARN: how to stream logs and errors from the process to our log
+
+        Process process = pb.start(); 
+        
+        // rn we jus pretend we succeeded, validate later with OS exit code
+        return true; 
+        
+    } catch (Exception e) {
+        log.error("[Run {}] OS Execution failed for command: {}", runId, command, e);
+        return false;
+    }
 }
+}
+
