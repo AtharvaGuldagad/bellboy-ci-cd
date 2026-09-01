@@ -92,7 +92,7 @@ public class LocalCommandExecutor implements PipelineExecutor {
                                                 boolean isSuccess = executeShellCommand(cmd, workspace, run.getId());
 
                                                 if (!isSuccess) {
-                                                    // If a command fails, the whole pipeline must halt.
+                                                    // If a command fails, the whole pipeline must halt
                                                     throw new RuntimeException(
                                                             "Pipeline halted due to failed command: " + cmd);
                                                 }
@@ -140,11 +140,24 @@ public class LocalCommandExecutor implements PipelineExecutor {
         pb.directory(workspace.toFile());
         
         // LEARN: how to stream logs and errors from the process to our log
+        // Learnt how to :P
+        pb.redirectErrorStream(true);
 
         Process process = pb.start(); 
+
+        // read the logs line to line and store them in the pipeline run logs
+        // prints to the console (temporarily ofc)
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                log.info("[Run {}] {}", runId, line);
+            }
+        }
         
         // rn we jus pretend we succeeded, validate later with OS exit code
         return true; 
+
+        
         
     } catch (Exception e) {
         log.error("[Run {}] OS Execution failed for command: {}", runId, command, e);
