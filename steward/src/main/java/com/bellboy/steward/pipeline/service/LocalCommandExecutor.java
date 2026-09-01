@@ -144,7 +144,6 @@ public class LocalCommandExecutor implements PipelineExecutor {
         pb.redirectErrorStream(true);
 
         Process process = pb.start(); 
-
         // read the logs line to line and store them in the pipeline run logs
         // prints to the console (temporarily ofc)
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
@@ -153,9 +152,15 @@ public class LocalCommandExecutor implements PipelineExecutor {
                 log.info("[Run {}] {}", runId, line);
             }
         }
-        
-        // rn we jus pretend we succeeded, validate later with OS exit code
-        return true; 
+        int exitCode = process.waitFor(); // waits for OS process to end
+
+        if (exitCode == 0) {
+            log.info("[Run {}] Command succeeded.", runId);
+            return true; 
+        } else {
+            log.error("[Run {}] Command failed with exit code: {}", runId, exitCode);
+            return false; // yell HALTT OFFICERR
+        }
 
         
         
