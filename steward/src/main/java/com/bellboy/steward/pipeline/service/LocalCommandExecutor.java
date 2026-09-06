@@ -102,6 +102,9 @@ public class LocalCommandExecutor implements PipelineExecutor {
                                 }
                             }
                         }
+                        log.info("All stages completed successfully! Checkout complete for Run: {}", run.getId());
+                        updateStatus(run.getId(), PipelineStatus.SUCCESS);
+
                     }
                     
                 } catch (Exception e) {
@@ -119,17 +122,35 @@ public class LocalCommandExecutor implements PipelineExecutor {
             updateStatus(run.getId(), PipelineStatus.FAILED);
         }
     }
- // gg
+ 
+
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateStatus(java.util.UUID runId, PipelineStatus status) {
-        repository.findById(runId).ifPresent(freshRun -> {
-            freshRun.setStatus(status);
-            if (status == PipelineStatus.SUCCESS || status == PipelineStatus.FAILED) {
-                freshRun.setEndTime(LocalDateTime.now());
+        int maxRetries = 3;
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                repository.findById(runId).ifPresent(freshRun -> {
+                    freshRun.setStatus(status);
+                    if (status == PipelineStatus.SUCCESS || status == PipelineStatus.FAILED) {
+                        freshRun.setEndTime(LocalDateTime.now());
+                    }
+                    repository.save(freshRun);
+                });
+                return;
+
+            } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                log.warn("Lock collision updating status to {}. Retrying {}/{}", status, i + 1, maxRetries);
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ignored) {
+                } // Wait 100ms before trying again
             }
-            repository.save(freshRun);
-        });
+        }
+        log.error("Failed to update status to {} after {} retries.", status, maxRetries);
     }
+
+
     private boolean executeShellCommand(String command, Path workspace, UUID runId) {
     log.info("[Run {}] Executing native command: {}", runId, command);
     
@@ -162,6 +183,7 @@ public class LocalCommandExecutor implements PipelineExecutor {
             return false; // yell HALTT OFFICERR
         }
 
+        
         
         
     } catch (Exception e) {
