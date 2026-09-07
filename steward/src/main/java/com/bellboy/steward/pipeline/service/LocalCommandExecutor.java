@@ -95,6 +95,7 @@ public class LocalCommandExecutor implements PipelineExecutor {
                                                     // If a command fails, the whole pipeline must halt
                                                     throw new RuntimeException(
                                                             "Pipeline halted due to failed command: " + cmd);
+                                                            
                                                 }
                                             }
                                         }
