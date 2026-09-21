@@ -1,10 +1,14 @@
 package main
 
+//Generated
 import (
 	"bufio"
 	"log"
 	"os"
 	"os/exec"
+
+	"fmt"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -82,4 +86,56 @@ func executeShellCommand(command string, workspace string) bool {
 
 	log.Printf("Command succeeded.\n")
 	return true
+}
+
+// Add this to executor.go
+
+// RunPipeline orchestrates the entire build process natively in Go
+func RunPipeline(runID string, repoURL string) {
+	log.Printf("[Run %s] Starting execution agent...", runID)
+
+	// 1. Create Workspace
+	workspace := filepath.Join(os.TempDir(), fmt.Sprintf("bellboy-run-%s", runID))
+	os.MkdirAll(workspace, os.ModePerm)
+
+	// 2. THE CLEANUP (Go's equivalent of the Java 'finally' block)
+	defer os.RemoveAll(workspace)
+	log.Printf("[Run %s] Created workspace: %s", runID, workspace)
+
+	// 3. Git Clone
+	cloneCmd := fmt.Sprintf("git clone %s .", repoURL)
+	if !executeShellCommand(cloneCmd, workspace) {
+		log.Printf("[Run %s] FATAL: Git clone failed.", runID)
+		return
+	}
+
+	// 4. Parse YAML
+	configPath := filepath.Join(workspace, ".bellboy.yml")
+	config, err := parseConfiguration(configPath)
+	if err != nil {
+		log.Printf("[Run %s] FATAL: Failed to parse .bellboy.yml: %v", runID, err)
+		return
+	}
+
+	log.Printf("[Run %s] Pipeline Name: %s", runID, config.Pipeline.Name)
+
+	// 5. THE EXECUTION LOOP (Stages -> Tasks -> Commands)
+	for _, stage := range config.Pipeline.Stages {
+		log.Printf("=== Stage: %s ===", stage)
+
+		for taskName, task := range config.Pipeline.Tasks {
+			if task.Stage == stage {
+				log.Printf("-> Executing Task: %s", taskName)
+
+				for _, cmd := range task.Commands {
+					if !executeShellCommand(cmd, workspace) {
+						log.Printf("[Run %s] FATAL: Task '%s' failed on command: %s", runID, taskName, cmd)
+						return // Halt pipeline immediately (DoNotDisturb)
+					}
+				}
+			}
+		}
+	}
+
+	log.Printf("[Run %s] Pipeline execution completed successfully!", runID)
 }
