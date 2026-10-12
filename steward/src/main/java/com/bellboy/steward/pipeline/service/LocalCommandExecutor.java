@@ -1,4 +1,4 @@
-package com.bellboy.steward.pipeline.service;
+/*package com.bellboy.steward.pipeline.service;
 
 import com.bellboy.steward.pipeline.PipelineRun;
 import com.bellboy.steward.pipeline.PipelineRunRepository;
@@ -95,6 +95,7 @@ public class LocalCommandExecutor implements PipelineExecutor {
                                                     // If a command fails, the whole pipeline must halt
                                                     throw new RuntimeException(
                                                             "Pipeline halted due to failed command: " + cmd);
+                                                            
                                                 }
                                             }
                                         }
@@ -191,5 +192,5 @@ public class LocalCommandExecutor implements PipelineExecutor {
         return false;
     }
 }
-}
-
+}S
+*/
