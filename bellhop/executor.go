@@ -1,19 +1,16 @@
 package main
 
-//Generated
 import (
 	"bufio"
-	"log"
+	"fmt"
 	"os"
 	"os/exec"
-
-	"fmt"
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
 
-// POJOs
+// 1. DATA MODELS
 type BellboyConfig struct {
 	Pipeline PipelineDef `yaml:"pipeline"`
 }
@@ -29,16 +26,14 @@ type TaskDef struct {
 	Commands []string `yaml:"commands"`
 }
 
-// jackson still helping here =
-func parseConfiguration(filePath string) (*BellboyConfig, error) { // generated function, yet to learn
-	// Read the entire file from disk into memory
+// 2. THE PARSER
+func parseConfiguration(filePath string) (*BellboyConfig, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 
 	var config BellboyConfig
-	// Unmarshal strictly binds the YAML text to our Structs
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		return nil, err
@@ -47,95 +42,77 @@ func parseConfiguration(filePath string) (*BellboyConfig, error) { // generated 
 	return &config, nil
 }
 
-// ProccessBuilder
-func executeShellCommand(command string, workspace string) bool {
-	log.Printf("Executing native command: %s\n", command)
+// 3. THE NATIVE EXECUTOR (Now with Kafka Telemetry!)
+func executeShellCommand(runID string, command string, workspace string) bool {
+	PublishEvent(runID, "LOG", fmt.Sprintf("Executing: %s", command))
 
 	cmd := exec.Command("bash", "-c", command)
-
 	cmd.Dir = workspace
 
-	// Attach to the Standard Output pipe
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		log.Printf("Failed to attach log pipe: %v\n", err)
+		PublishEvent(runID, "ERROR", fmt.Sprintf("Failed to attach log pipe: %v", err))
 		return false
 	}
 
-	// Merge Error stream into Standard Output so we capture everything chronologically
 	cmd.Stderr = cmd.Stdout
 
-	// Start the OS process (non-blocking)
 	if err := cmd.Start(); err != nil {
-		log.Printf("Failed to start command: %v\n", err)
+		PublishEvent(runID, "ERROR", fmt.Sprintf("Failed to start command: %v", err))
 		return false
 	}
 
-	// Stream logs line-by-line in real time
+	// Stream logs line-by-line in real time into Kafka
 	scanner := bufio.NewScanner(stdoutPipe)
 	for scanner.Scan() {
-		log.Printf("[Agent Log] %s\n", scanner.Text())
+		PublishEvent(runID, "LOG", scanner.Text())
 	}
 
-	// Wait for the process to finish and check the exit code
 	err = cmd.Wait()
 	if err != nil {
-		log.Printf("Command failed: %v\n", err)
-		return false // Triggers our DoNotDisturb halt
+		PublishEvent(runID, "ERROR", fmt.Sprintf("Command failed: %v", err))
+		return false
 	}
 
-	log.Printf("Command succeeded.\n")
+	PublishEvent(runID, "LOG", "Command succeeded.")
 	return true
 }
 
-// Add this to executor.go
-
-// RunPipeline orchestrates the entire build process natively in Go
+// 4. THE ORCHESTRATOR
 func RunPipeline(runID string, repoURL string) {
-	log.Printf("[Run %s] Starting execution agent...", runID)
+	PublishEvent(runID, "STATUS", "RUNNING") // Tell Java the job started!
 
-	// 1. Create Workspace
 	workspace := filepath.Join(os.TempDir(), fmt.Sprintf("bellboy-run-%s", runID))
 	os.MkdirAll(workspace, os.ModePerm)
-
-	// 2. THE CLEANUP (Go's equivalent of the Java 'finally' block)
 	defer os.RemoveAll(workspace)
-	log.Printf("[Run %s] Created workspace: %s", runID, workspace)
 
-	// 3. Git Clone
 	cloneCmd := fmt.Sprintf("git clone %s .", repoURL)
-	if !executeShellCommand(cloneCmd, workspace) {
-		log.Printf("[Run %s] FATAL: Git clone failed.", runID)
+	if !executeShellCommand(runID, cloneCmd, workspace) {
+		PublishEvent(runID, "STATUS", "FAILED")
 		return
 	}
 
-	// 4. Parse YAML
 	configPath := filepath.Join(workspace, ".bellboy.yml")
 	config, err := parseConfiguration(configPath)
 	if err != nil {
-		log.Printf("[Run %s] FATAL: Failed to parse .bellboy.yml: %v", runID, err)
+		PublishEvent(runID, "ERROR", fmt.Sprintf("Failed to parse YAML: %v", err))
+		PublishEvent(runID, "STATUS", "FAILED")
 		return
 	}
 
-	log.Printf("[Run %s] Pipeline Name: %s", runID, config.Pipeline.Name)
-
-	// 5. THE EXECUTION LOOP (Stages -> Tasks -> Commands)
 	for _, stage := range config.Pipeline.Stages {
-		log.Printf("=== Stage: %s ===", stage)
-
 		for taskName, task := range config.Pipeline.Tasks {
 			if task.Stage == stage {
-				log.Printf("-> Executing Task: %s", taskName)
-
+				PublishEvent(runID, "LOG", fmt.Sprintf("-> Executing Task: %s", taskName))
 				for _, cmd := range task.Commands {
-					if !executeShellCommand(cmd, workspace) {
-						log.Printf("[Run %s] FATAL: Task '%s' failed on command: %s", runID, taskName, cmd)
-						return // Halt pipeline immediately (DoNotDisturb)
+					if !executeShellCommand(runID, cmd, workspace) {
+						PublishEvent(runID, "STATUS", "FAILED") // Halt and notify Java
+						return
 					}
 				}
 			}
 		}
 	}
 
-	log.Printf("[Run %s] Pipeline execution completed successfully!", runID)
+	PublishEvent(runID, "STATUS", "SUCCESS") // Tell Java the pipeline finished!
 }
