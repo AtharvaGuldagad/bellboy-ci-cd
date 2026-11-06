@@ -10,7 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// 1. DATA MODELS
+// DATA MODELS
 type BellboyConfig struct {
 	Pipeline PipelineDef `yaml:"pipeline"`
 }
@@ -19,6 +19,7 @@ type PipelineDef struct {
 	Name   string             `yaml:"name"`
 	Stages []string           `yaml:"stages"`
 	Tasks  map[string]TaskDef `yaml:"tasks"`
+	Artifacts []string        `yaml:"artifacts"`
 }
 
 type TaskDef struct {
@@ -26,7 +27,7 @@ type TaskDef struct {
 	Commands []string `yaml:"commands"`
 }
 
-// 2. THE PARSER
+// THE PARSER
 func parseConfiguration(filePath string) (*BellboyConfig, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -42,7 +43,7 @@ func parseConfiguration(filePath string) (*BellboyConfig, error) {
 	return &config, nil
 }
 
-// 3. THE NATIVE EXECUTOR (Now with Kafka Telemetry!)
+// THE NATIVE EXECUTOR (Kafka Telemetry inc)
 func executeShellCommand(runID string, command string, workspace string) bool {
 	PublishEvent(runID, "LOG", fmt.Sprintf("Executing: %s", command))
 
@@ -62,7 +63,7 @@ func executeShellCommand(runID string, command string, workspace string) bool {
 		return false
 	}
 
-	// Stream logs line-by-line in real time into Kafka
+	// Stream logs line by line in real time into Kafka
 	scanner := bufio.NewScanner(stdoutPipe)
 	for scanner.Scan() {
 		PublishEvent(runID, "LOG", scanner.Text())
@@ -78,9 +79,9 @@ func executeShellCommand(runID string, command string, workspace string) bool {
 	return true
 }
 
-// 4. THE ORCHESTRATOR
+// THE ORCHESTRATOR
 func RunPipeline(runID string, repoURL string) {
-	PublishEvent(runID, "STATUS", "RUNNING") // Tell Java the job started!
+	PublishEvent(runID, "STATUS", "RUNNING") // Tell steward the job started
 
 	workspace := filepath.Join(os.TempDir(), fmt.Sprintf("bellboy-run-%s", runID))
 	os.MkdirAll(workspace, os.ModePerm)
@@ -106,7 +107,7 @@ func RunPipeline(runID string, repoURL string) {
 				PublishEvent(runID, "LOG", fmt.Sprintf("-> Executing Task: %s", taskName))
 				for _, cmd := range task.Commands {
 					if !executeShellCommand(runID, cmd, workspace) {
-						PublishEvent(runID, "STATUS", "FAILED") // Halt and notify Java
+						PublishEvent(runID, "STATUS", "FAILED") // Halt and notify steward
 						return
 					}
 				}
@@ -114,5 +115,13 @@ func RunPipeline(runID string, repoURL string) {
 		}
 	}
 
-	PublishEvent(runID, "STATUS", "SUCCESS") // Tell Java the pipeline finished!
+	// catch artifacts before we nuke the workspace
+	for _, artifactPath := range config.Pipeline.Artifacts {
+		if !UploadArtifact(runID, workspace, artifactPath) {
+			PublishEvent(runID, "STATUS", "FAILED")
+			return
+		}
+	}
+
+	PublishEvent(runID, "STATUS", "SUCCESS") // Tell steward the pipeline finished
 }
