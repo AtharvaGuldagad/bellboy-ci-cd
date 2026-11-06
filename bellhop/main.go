@@ -50,6 +50,7 @@ func ExecuteJobHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 
 	InitKafka()
+	InitStorage()
 	// Route Registration
 	http.HandleFunc("/api/v1/health", HealthCheckHandler)
 	http.HandleFunc("/api/v1/execute", ExecuteJobHandler) // The Push Endpoint
