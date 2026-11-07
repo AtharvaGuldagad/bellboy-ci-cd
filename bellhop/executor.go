@@ -2,9 +2,14 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
-	"os"
-	"os/exec"
+
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
+
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
@@ -17,9 +22,14 @@ type BellboyConfig struct {
 
 type PipelineDef struct {
 	Name   string             `yaml:"name"`
+	Runner RunnerDef          `yaml:"runner"`
 	Stages []string           `yaml:"stages"`
 	Tasks  map[string]TaskDef `yaml:"tasks"`
 	Artifacts []string        `yaml:"artifacts"`
+}
+
+type RunnerDef struct {
+	Image string `yaml:"image"`
 }
 
 type TaskDef struct {
@@ -27,7 +37,7 @@ type TaskDef struct {
 	Commands []string `yaml:"commands"`
 }
 
-// THE PARSER
+// PARSER
 func parseConfiguration(filePath string) (*BellboyConfig, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
