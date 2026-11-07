@@ -53,39 +53,81 @@ func parseConfiguration(filePath string) (*BellboyConfig, error) {
 	return &config, nil
 }
 
-// THE NATIVE EXECUTOR (Kafka Telemetry inc)
-func executeShellCommand(runID string, command string, workspace string) bool {
-	PublishEvent(runID, "LOG", fmt.Sprintf("Executing: %s", command))
+// runs shell commands in a container (uses the image u specify in yml)
+func executeDockerCommand(runID string, imageName string, command string, workspace string) bool {
+	ctx := context.Background()
+	PublishEvent(runID, "LOG", fmt.Sprintf("Initializing isolated container from image: %s", imageName))
 
-	cmd := exec.Command("bash", "-c", command)
-	cmd.Dir = workspace
-
-	stdoutPipe, err := cmd.StdoutPipe()
+	// Connect to the host's Docker Engine
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		PublishEvent(runID, "ERROR", fmt.Sprintf("Failed to attach log pipe: %v", err))
+		PublishEvent(runID, "ERROR", fmt.Sprintf("Docker Engine connection failed: %v", err))
 		return false
 	}
+	defer cli.Close()
 
-	cmd.Stderr = cmd.Stdout
-
-	if err := cmd.Start(); err != nil {
-		PublishEvent(runID, "ERROR", fmt.Sprintf("Failed to start command: %v", err))
-		return false
-	}
-
-	// Stream logs line by line in real time into Kafka
-	scanner := bufio.NewScanner(stdoutPipe)
-	for scanner.Scan() {
-		PublishEvent(runID, "LOG", scanner.Text())
-	}
-
-	err = cmd.Wait()
+	// Pull the Image (if not already cached locally)
+	reader, err := cli.ImagePull(ctx, imageName, image.PullOptions{})
 	if err != nil {
-		PublishEvent(runID, "ERROR", fmt.Sprintf("Command failed: %v", err))
+		PublishEvent(runID, "ERROR", fmt.Sprintf("Failed to pull image '%s': %v", imageName, err))
+		return false
+	}
+	reader.Close()
+
+	// Create the Container & Mount the Workspace
+	// ts binds the host's temporary workspace folder to "/workspace" inside the container
+	resp, err := cli.ContainerCreate(ctx, &container.Config{
+		Image:      imageName,
+		Cmd:        []string{"bash", "-c", command},
+		Tty:        true, // Merges Stdout and Stderr so we can stream it cleanly
+		WorkingDir: "/workspace",
+	}, &container.HostConfig{
+		Binds: []string{workspace + ":/workspace"},
+	}, nil, nil, "")
+	
+	if err != nil {
+		PublishEvent(runID, "ERROR", fmt.Sprintf("Failed to provision container: %v", err))
 		return false
 	}
 
-	PublishEvent(runID, "LOG", "Command succeeded.")
+	// clean up.. container is destroyed when we finish
+	defer cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+
+	// Start the Execution
+	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		PublishEvent(runID, "ERROR", fmt.Sprintf("Failed to start container: %v", err))
+		return false
+	}
+
+	// kafka canon :P Stream logs out of the container and into our telemetry pipeline
+	out, err := cli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true,
+	})
+	if err == nil {
+		scanner := bufio.NewScanner(out)
+		for scanner.Scan() {
+			PublishEvent(runID, "LOG", scanner.Text())
+		}
+	}
+
+	// Wait for completion and inspect the exit code
+	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			PublishEvent(runID, "ERROR", fmt.Sprintf("Container crashed: %v", err))
+			return false
+		}
+	case status := <-statusCh:
+		if status.StatusCode != 0 {
+			PublishEvent(runID, "ERROR", fmt.Sprintf("Command failed with exit code: %d", status.StatusCode))
+			return false
+		}
+	}
+
+	PublishEvent(runID, "LOG", "Container execution succeeded.")
 	return true
 }
 
