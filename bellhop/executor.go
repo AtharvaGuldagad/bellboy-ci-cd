@@ -153,14 +153,23 @@ func RunPipeline(runID string, repoURL string) {
 		return
 	}
 
+	imageName := config.Pipeline.Runner.Image
+	if imageName == "" {
+		imageName = "ubuntu:latest" // Default fallback
+	}
+
 	for _, stage := range config.Pipeline.Stages {
+		PublishEvent(runID, "LOG", fmt.Sprintf("=== Starting Stage: %s ===", stage))
+
 		for taskName, task := range config.Pipeline.Tasks {
 			if task.Stage == stage {
 				PublishEvent(runID, "LOG", fmt.Sprintf("-> Executing Task: %s", taskName))
+
 				for _, cmd := range task.Commands {
-					if !executeShellCommand(runID, cmd, workspace) {
-						PublishEvent(runID, "STATUS", "FAILED") // Halt and notify steward
-						return
+					// PIVOT: Call executeDockerCommand instead of executeShellCommand
+					if !executeDockerCommand(runID, imageName, cmd, workspace) {
+						PublishEvent(runID, "STATUS", "FAILED")
+						return 
 					}
 				}
 			}

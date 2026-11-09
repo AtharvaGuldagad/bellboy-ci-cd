@@ -21,3 +21,20 @@ services:
       - MINIO_ROOT_USER=bellboy_admin
       - MINIO_ROOT_PASSWORD=bellboy_secret_key
     command: server /data --console-address ":9001"
+
+  kong:
+    image: kong:3.6.0-ubuntu
+    ports:
+      - "8000:8000" # Kong proxy port
+    environment:
+      - KONG_DATABASE=off
+      - KONG_DECLARATIVE_CONFIG=/usr/local/kong/declarative/kong.yml
+      - KONG_PROXY_ACCESS_LOG=/dev/stdout
+      - KONG_PROXY_ERROR_LOG=/dev/stderr
+      - KONG_PROXY_LISTEN=0.0.0.0:8000
+    volumes:
+      # Mounts your config file directly into the Kong container
+      - ./kong.yml:/usr/local/kong/declarative/kong.yml
+    extra_hosts:
+      # Allows Kong to reach Spring Boot on the Fedora host network
+      - "host.docker.internal:host-gateway"
