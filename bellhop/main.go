@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // JobRequest defines the payload pushed by the Java Control Plane (Steward)
@@ -54,6 +56,8 @@ func main() {
 	// Route Registration
 	http.HandleFunc("/api/v1/health", HealthCheckHandler)
 	http.HandleFunc("/api/v1/execute", ExecuteJobHandler) // The Push Endpoint
+
+	http.Handle("/metrics", promhttp.Handler()) // metrics for prometheus
 
 	port := ":8081" // Go agent on 8081, Spring Boot on 8080
 	log.Printf("Bellhop Agent starting on port %s...\n", port)

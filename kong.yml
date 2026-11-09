@@ -1,7 +1,7 @@
 _format_version: "3.0"
 services:
   - name: steward-service
-    # Points to your Spring Boot app running on the host machine
+    # throws the ball to Steward running on the host machine
     url: http://host.docker.internal:8080
     routes:
       - name: webhook-route
@@ -10,7 +10,7 @@ services:
     plugins:
       - name: rate-limiting
         config:
-          # Strict DDoS protection: Max 10 webhook triggers per minute per IP
+          # DDOS limits: Max 10 webhook triggers per minute per IP
           minute: 10
           policy: local
           fault_tolerant: true
